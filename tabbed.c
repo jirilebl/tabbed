@@ -118,6 +118,7 @@ static Bool isprotodel(int c);
 static void keypress(const XEvent *e);
 static void killclient(const Arg *arg);
 static void manage(Window win);
+static void mappingnotify(const XEvent *e);
 static void maprequest(const XEvent *e);
 static void move(const Arg *arg);
 static void movetab(const Arg *arg);
@@ -135,6 +136,7 @@ static void unmanage(int c);
 static void unmapnotify(const XEvent *e);
 static void updatenumlockmask(void);
 static void updatetitle(int c);
+static void grabkeys(int c);
 static int xerror(Display *dpy, XErrorEvent *ee);
 static void xsettitle(Window w, const char *str);
 
@@ -151,6 +153,7 @@ static void (*handler[LASTEvent]) (const XEvent *) = {
 	[Expose] = expose,
 	[FocusIn] = focusin,
 	[KeyPress] = keypress,
+	[MappingNotify] = mappingnotify,
 	[MapRequest] = maprequest,
 	[PropertyNotify] = propertynotify,
 };
@@ -767,10 +770,7 @@ manage(Window w)
 {
 	updatenumlockmask();
 	{
-		int i, j, nextpos;
-		unsigned int modifiers[] = { 0, LockMask, numlockmask,
-		                             numlockmask | LockMask };
-		KeyCode code;
+		int nextpos;
 		Client *c;
 		XEvent e;
 
@@ -779,16 +779,6 @@ manage(Window w)
 		XSelectInput(dpy, w, PropertyChangeMask |
 		             StructureNotifyMask | EnterWindowMask);
 		XSync(dpy, False);
-
-		for (i = 0; i < LENGTH(keys); i++) {
-			if ((code = XKeysymToKeycode(dpy, keys[i].keysym))) {
-				for (j = 0; j < LENGTH(modifiers); j++) {
-					XGrabKey(dpy, code, keys[i].mod |
-					         modifiers[j], w, True,
-					         GrabModeAsync, GrabModeAsync);
-				}
-			}
-		}
 
 		c = ecalloc(1, sizeof *c);
 		c->win = w;
@@ -816,6 +806,7 @@ manage(Window w)
 
 		clients[nextpos] = c;
 		updatetitle(nextpos);
+		grabkeys(nextpos);
 
 		XLowerWindow(dpy, w);
 		XMapWindow(dpy, w);
@@ -840,6 +831,20 @@ manage(Window w)
 		      sel < 0 ? 0 :
 		      sel);
 		nextfocus = foreground;
+	}
+}
+
+void
+mappingnotify(const XEvent *e)
+{
+	const XMappingEvent *ev = &e->xmapping;
+	int i;
+
+	XRefreshKeyboardMapping((XMappingEvent *)ev);
+	if (ev->request == MappingKeyboard || ev->request == MappingModifier) {
+		updatenumlockmask();
+		for (i = 0; i < nclients; i++)
+			grabkeys(i);
 	}
 }
 
@@ -1301,6 +1306,26 @@ updatetitle(int c)
 	if (sel == c)
 		xsettitle(win, clients[c]->name);
 	drawbar();
+}
+
+void
+grabkeys(int c)
+{
+	unsigned int i, j;
+	unsigned int modifiers[] = { 0, LockMask, numlockmask,
+	                             numlockmask | LockMask };
+	KeyCode code;
+
+	XUngrabKey(dpy, AnyKey, AnyModifier, clients[c]->win);
+	for (i = 0; i < LENGTH(keys); i++) {
+		if ((code = XKeysymToKeycode(dpy, keys[i].keysym))) {
+			for (j = 0; j < LENGTH(modifiers); j++) {
+				XGrabKey(dpy, code, keys[i].mod |
+				         modifiers[j], clients[c]->win, True,
+				         GrabModeAsync, GrabModeAsync);
+			}
+		}
+	}
 }
 
 /* There's no way to check accesses to destroyed windows, thus those cases are
