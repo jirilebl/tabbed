@@ -824,6 +824,12 @@ manage(Window w)
 
 		XSync(dpy, False);
 
+		/* hack to avoid some sort of race, without it, alacritty
+		 * will sometimes not get initial focus.  This delay seems
+		 * to be sufficient to get around it, but this is not
+		 * a real fix. */
+		usleep (20000);
+
 		/* Adjust sel before focus does set it to lastsel. */
 		if (sel >= nextpos)
 			sel++;
